@@ -1,7 +1,10 @@
 import axios from 'axios';
 
+// Utiliza variável de ambiente VITE_API_URL se definida, ou '/api' por padrão
+const baseURL = import.meta.env.VITE_API_URL || '/api';
+
 const api = axios.create({
-  baseURL: '/api'
+  baseURL
 });
 
 // Interceptor para injetar token JWT em todas as requisições

@@ -5,7 +5,10 @@ import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const dbPath = path.resolve(__dirname, '../../database.sqlite');
+
+// Caminho do banco configurável via variável de ambiente (ou /tmp na Vercel Serverless)
+const defaultLocalPath = path.resolve(__dirname, '../../database.sqlite');
+const dbPath = process.env.DB_PATH || (process.env.VERCEL ? path.join('/tmp', 'database.sqlite') : defaultLocalPath);
 
 let dbInstance = null;
 

@@ -6,14 +6,14 @@
   <img src="https://img.shields.io/badge/Node.js-Express-green?logo=node.js&logoColor=white" alt="Node.js" />
   <img src="https://img.shields.io/badge/SQLite-3-003B57?logo=sqlite&logoColor=white" alt="SQLite" />
   <img src="https://img.shields.io/badge/JWT-Authentication-black?logo=jsonwebtokens" alt="JWT" />
-  <img src="https://img.shields.io/badge/Status-Production%20Ready-success" alt="Status" />
+  <img src="https://img.shields.io/badge/Vercel-Ready-000000?logo=vercel&logoColor=white" alt="Vercel Ready" />
 </p>
 
 Uma aplicação web fullstack completa, elegante e intuitiva desenvolvida para organizar sua rotina pessoal e profissional, acompanhar metas em tempo real e fornecer uma visão clara e analítica da sua produtividade diária e semanal.
 
 ---
 
-## 📸 Visão Geral das Telas
+## 🌟 Funcionalidades
 
 - **🧭 Barra Lateral (Sidebar)**: Menu retrátil fixado à esquerda com acesso rápido a Início, Minhas Tarefas, Categorias, Configurações, alternador de tema e perfil.
 - **📊 Painel Inicial (Dashboard)**:
@@ -29,6 +29,38 @@ Uma aplicação web fullstack completa, elegante e intuitiva desenvolvida para o
 - **🔐 Autenticação & Recuperação de Senha**:
   - Login e Cadastro com criptografia `bcrypt` e tokens `JWT`.
   - Fluxo integrado para **Recuperação de Senha** (*"Esqueceu a senha?"*).
+
+---
+
+## ☁️ Como Hospedar na Vercel
+
+O projeto já está configurado para deploy automático na **Vercel** com `vercel.json` e suporte a Serverless Functions em `api/index.js`.
+
+### Passo a Passo para Deploy:
+
+1. Acesse o painel da [Vercel](https://vercel.com/) e clique em **"Add New Project"**.
+2. Conecte sua conta do GitHub e importe o repositório **`taskflow-productivity-app`**.
+3. Na seção **Environment Variables** (Variáveis de Ambiente), adicione:
+   - `JWT_SECRET`: *Gere uma chave segura e aleatória (ex: `e7f2b9a1c4d8e0f3...`)*
+   - `NODE_ENV`: `production`
+   - `VITE_API_URL`: `/api` *(caso utilize a API integrada na Vercel)*
+4. Clique em **"Deploy"**. A Vercel executará o build do frontend e disponibilizará a aplicação no link público gerado!
+
+---
+
+## 🔑 Variáveis de Ambiente
+
+Consulte o arquivo `.env.example` para obter a lista completa de variáveis:
+
+```env
+# Backend / Serverless
+PORT=3001
+NODE_ENV=production
+JWT_SECRET=sua-chave-secreta-jwt-super-segura-2026
+
+# Frontend (Vite)
+VITE_API_URL=/api
+```
 
 ---
 
@@ -159,4 +191,4 @@ npm run dev
 ---
 
 ## 📄 Licença
-Distribuído sob a licença MIT. Consulte `LICENSE` para obter mais informações.
+Distribuído sob a licença MIT.

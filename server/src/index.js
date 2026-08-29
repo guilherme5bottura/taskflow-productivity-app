@@ -17,10 +17,23 @@ const PORT = process.env.PORT || 3001;
 app.use(cors());
 app.use(express.json());
 
-// Request logging (clean development)
+// Request logging
 app.use((req, res, next) => {
-  console.log(`[${new Date().toLocaleTimeString()}] ${req.method} ${req.url}`);
+  if (process.env.NODE_ENV !== 'test') {
+    console.log(`[${new Date().toLocaleTimeString()}] ${req.method} ${req.url}`);
+  }
   next();
+});
+
+// Middleware para garantir que o banco esteja pronto (importante para ambientes serverless)
+app.use(async (req, res, next) => {
+  try {
+    await getDb();
+    next();
+  } catch (err) {
+    console.error('Falha ao conectar no SQLite:', err);
+    res.status(500).json({ error: 'Erro ao conectar no banco de dados' });
+  }
 });
 
 // API Routes
@@ -32,7 +45,7 @@ app.use('/api/stats', statsRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', time: new Date().toISOString() });
+  res.json({ status: 'ok', environment: process.env.NODE_ENV || 'development', time: new Date().toISOString() });
 });
 
 // Global error handler
@@ -41,19 +54,11 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Ocorreu um erro interno no servidor' });
 });
 
-// Initialize DB and start server
-async function startServer() {
-  try {
-    const db = await getDb();
-    console.log('📦 Banco de dados SQLite inicializado com sucesso.');
-
-    app.listen(PORT, () => {
-      console.log(`🚀 Servidor backend rodando na porta http://localhost:${PORT}`);
-    });
-  } catch (err) {
-    console.error('❌ Falha crítica ao inicializar o banco de dados:', err);
-    process.exit(1);
-  }
+// Se executado diretamente e não for ambiente Vercel Serverless, inicia o listener HTTP
+if (!process.env.VERCEL) {
+  app.listen(PORT, () => {
+    console.log(`🚀 Servidor backend rodando na porta http://localhost:${PORT}`);
+  });
 }
 
-startServer();
+export default app;
