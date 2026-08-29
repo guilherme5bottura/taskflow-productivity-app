@@ -23,49 +23,40 @@ router.get('/', async (req, res) => {
       WHERE t.user_id = ?
     `;
 
-    const params = [req.user.id];
+    const args = [req.user.id];
 
     if (category_id) {
       query += ' AND t.category_id = ?';
-      params.push(category_id);
+      args.push(category_id);
     }
 
     if (priority) {
       query += ' AND t.priority = ?';
-      params.push(priority);
+      args.push(priority);
     }
 
     if (status) {
       query += ' AND t.status = ?';
-      params.push(status);
+      args.push(status);
     }
 
     if (search) {
       query += ' AND (t.title LIKE ? OR t.description LIKE ?)';
-      params.push(`%${search}%`, `%${search}%`);
+      args.push(`%${search}%`, `%${search}%`);
     }
 
     // Filtros rápidos de data
-    const now = new Date().toISOString();
-    const todayStart = new Date();
-    todayStart.setHours(0, 0, 0, 0);
-    const todayEnd = new Date();
-    todayEnd.setHours(23, 59, 59, 999);
-
     if (filter === 'overdue') {
-      // Atrasadas (status != 'concluida' e due_date < now)
       query += ` AND t.status != 'concluida' AND t.due_date IS NOT NULL AND datetime(t.due_date) < datetime('now', 'localtime')`;
     } else if (filter === 'today') {
-      // Vencendo hoje
       query += ` AND t.due_date IS NOT NULL AND date(t.due_date) = date('now', 'localtime')`;
     } else if (filter === 'completed_today') {
-      // Concluídas hoje
       query += ` AND t.status = 'concluida' AND t.completed_at IS NOT NULL AND date(t.completed_at) = date('now', 'localtime')`;
     }
 
     if (tag_id) {
       query += ` AND t.id IN (SELECT task_id FROM task_tags WHERE tag_id = ?)`;
-      params.push(tag_id);
+      args.push(tag_id);
     }
 
     query += ` ORDER BY 
@@ -76,7 +67,8 @@ router.get('/', async (req, res) => {
       t.created_at DESC
     `;
 
-    const tasks = await db.all(query, params);
+    const tasksResult = await db.execute({ sql: query, args });
+    const tasks = [...tasksResult.rows];
 
     // Buscar tags de cada tarefa
     const taskIds = tasks.map(t => t.id);
@@ -84,14 +76,17 @@ router.get('/', async (req, res) => {
 
     if (taskIds.length > 0) {
       const placeholders = taskIds.map(() => '?').join(',');
-      const tagsRows = await db.all(`
-        SELECT tt.task_id, tg.id, tg.name, tg.color
-        FROM task_tags tt
-        JOIN tags tg ON tg.id = tt.tag_id
-        WHERE tt.task_id IN (${placeholders})
-      `, taskIds);
+      const tagsResult = await db.execute({
+        sql: `
+          SELECT tt.task_id, tg.id, tg.name, tg.color
+          FROM task_tags tt
+          JOIN tags tg ON tg.id = tt.tag_id
+          WHERE tt.task_id IN (${placeholders})
+        `,
+        args: taskIds
+      });
 
-      tagsRows.forEach(row => {
+      tagsResult.rows.forEach(row => {
         if (!tagsByTask[row.task_id]) tagsByTask[row.task_id] = [];
         tagsByTask[row.task_id].push({ id: row.id, name: row.name, color: row.color });
       });
@@ -123,52 +118,64 @@ router.post('/', async (req, res) => {
     const taskStatus = ['pendente', 'em_andamento', 'concluida'].includes(status) ? status : 'pendente';
     const completedAt = taskStatus === 'concluida' ? new Date().toISOString() : null;
 
-    const result = await db.run(`
-      INSERT INTO tasks (user_id, category_id, title, description, due_date, priority, status, completed_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `, [
-      req.user.id,
-      category_id || null,
-      title.trim(),
-      description ? description.trim() : null,
-      due_date || null,
-      taskPriority,
-      taskStatus,
-      completedAt
-    ]);
+    const result = await db.execute({
+      sql: `
+        INSERT INTO tasks (user_id, category_id, title, description, due_date, priority, status, completed_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `,
+      args: [
+        req.user.id,
+        category_id || null,
+        title.trim(),
+        description ? description.trim() : null,
+        due_date || null,
+        taskPriority,
+        taskStatus,
+        completedAt
+      ]
+    });
 
-    const taskId = result.lastID;
+    const taskId = Number(result.lastInsertRowid);
 
     // Inserir tags associadas
     if (Array.isArray(tags) && tags.length > 0) {
       for (const tagId of tags) {
-        await db.run('INSERT OR IGNORE INTO task_tags (task_id, tag_id) VALUES (?, ?)', [taskId, tagId]);
+        await db.execute({
+          sql: 'INSERT OR IGNORE INTO task_tags (task_id, tag_id) VALUES (?, ?)',
+          args: [taskId, tagId]
+        });
       }
     }
 
     // Buscar tarefa recém-criada com detalhes
-    const newTask = await db.get(`
-      SELECT 
-        t.*,
-        c.name as category_name,
-        c.color as category_color,
-        c.icon as category_icon
-      FROM tasks t
-      LEFT JOIN categories c ON c.id = t.category_id
-      WHERE t.id = ?
-    `, [taskId]);
+    const newTaskResult = await db.execute({
+      sql: `
+        SELECT 
+          t.*,
+          c.name as category_name,
+          c.color as category_color,
+          c.icon as category_icon
+        FROM tasks t
+        LEFT JOIN categories c ON c.id = t.category_id
+        WHERE t.id = ?
+      `,
+      args: [taskId]
+    });
 
-    const taskTags = await db.all(`
-      SELECT tg.id, tg.name, tg.color
-      FROM task_tags tt
-      JOIN tags tg ON tg.id = tt.tag_id
-      WHERE tt.task_id = ?
-    `, [taskId]);
+    const taskTagsResult = await db.execute({
+      sql: `
+        SELECT tg.id, tg.name, tg.color
+        FROM task_tags tt
+        JOIN tags tg ON tg.id = tt.tag_id
+        WHERE tt.task_id = ?
+      `,
+      args: [taskId]
+    });
 
     res.status(201).json({
       task: {
-        ...newTask,
-        tags: taskTags
+        ...newTaskResult.rows[0],
+        tags: [...taskTagsResult.rows]
       }
     });
   } catch (error) {
@@ -184,7 +191,12 @@ router.put('/:id', async (req, res) => {
     const { title, description, category_id, due_date, priority, status, tags } = req.body;
 
     const db = await getDb();
-    const existing = await db.get('SELECT * FROM tasks WHERE id = ? AND user_id = ?', [id, req.user.id]);
+    const existingResult = await db.execute({
+      sql: 'SELECT * FROM tasks WHERE id = ? AND user_id = ?',
+      args: [id, req.user.id]
+    });
+
+    const existing = existingResult.rows[0];
     if (!existing) {
       return res.status(404).json({ error: 'Tarefa não encontrada' });
     }
@@ -203,42 +215,58 @@ router.put('/:id', async (req, res) => {
       completedAt = null;
     }
 
-    await db.run(`
-      UPDATE tasks 
-      SET category_id = ?, title = ?, description = ?, due_date = ?, priority = ?, status = ?, completed_at = ?, updated_at = CURRENT_TIMESTAMP
-      WHERE id = ? AND user_id = ?
-    `, [taskCat, taskTitle, taskDesc, taskDue, taskPriority, taskStatus, completedAt, id, req.user.id]);
+    await db.execute({
+      sql: `
+        UPDATE tasks 
+        SET category_id = ?, title = ?, description = ?, due_date = ?, priority = ?, status = ?, completed_at = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ? AND user_id = ?
+      `,
+      args: [taskCat, taskTitle, taskDesc, taskDue, taskPriority, taskStatus, completedAt, id, req.user.id]
+    });
 
     // Atualizar tags se enviadas
     if (Array.isArray(tags)) {
-      await db.run('DELETE FROM task_tags WHERE task_id = ?', [id]);
+      await db.execute({
+        sql: 'DELETE FROM task_tags WHERE task_id = ?',
+        args: [id]
+      });
+
       for (const tagId of tags) {
-        await db.run('INSERT OR IGNORE INTO task_tags (task_id, tag_id) VALUES (?, ?)', [id, tagId]);
+        await db.execute({
+          sql: 'INSERT OR IGNORE INTO task_tags (task_id, tag_id) VALUES (?, ?)',
+          args: [id, tagId]
+        });
       }
     }
 
-    const updatedTask = await db.get(`
-      SELECT 
-        t.*,
-        c.name as category_name,
-        c.color as category_color,
-        c.icon as category_icon
-      FROM tasks t
-      LEFT JOIN categories c ON c.id = t.category_id
-      WHERE t.id = ?
-    `, [id]);
+    const updatedTaskResult = await db.execute({
+      sql: `
+        SELECT 
+          t.*,
+          c.name as category_name,
+          c.color as category_color,
+          c.icon as category_icon
+        FROM tasks t
+        LEFT JOIN categories c ON c.id = t.category_id
+        WHERE t.id = ?
+      `,
+      args: [id]
+    });
 
-    const updatedTags = await db.all(`
-      SELECT tg.id, tg.name, tg.color
-      FROM task_tags tt
-      JOIN tags tg ON tg.id = tt.tag_id
-      WHERE tt.task_id = ?
-    `, [id]);
+    const updatedTagsResult = await db.execute({
+      sql: `
+        SELECT tg.id, tg.name, tg.color
+        FROM task_tags tt
+        JOIN tags tg ON tg.id = tt.tag_id
+        WHERE tt.task_id = ?
+      `,
+      args: [id]
+    });
 
     res.json({
       task: {
-        ...updatedTask,
-        tags: updatedTags
+        ...updatedTaskResult.rows[0],
+        tags: [...updatedTagsResult.rows]
       }
     });
   } catch (error) {
@@ -253,7 +281,12 @@ router.patch('/:id/toggle', async (req, res) => {
     const { id } = req.params;
     const db = await getDb();
 
-    const task = await db.get('SELECT * FROM tasks WHERE id = ? AND user_id = ?', [id, req.user.id]);
+    const result = await db.execute({
+      sql: 'SELECT * FROM tasks WHERE id = ? AND user_id = ?',
+      args: [id, req.user.id]
+    });
+
+    const task = result.rows[0];
     if (!task) {
       return res.status(404).json({ error: 'Tarefa não encontrada' });
     }
@@ -262,34 +295,43 @@ router.patch('/:id/toggle', async (req, res) => {
     const newStatus = isNowCompleted ? 'concluida' : 'pendente';
     const completedAt = isNowCompleted ? new Date().toISOString() : null;
 
-    await db.run(`
-      UPDATE tasks 
-      SET status = ?, completed_at = ?, updated_at = CURRENT_TIMESTAMP
-      WHERE id = ? AND user_id = ?
-    `, [newStatus, completedAt, id, req.user.id]);
+    await db.execute({
+      sql: `
+        UPDATE tasks 
+        SET status = ?, completed_at = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ? AND user_id = ?
+      `,
+      args: [newStatus, completedAt, id, req.user.id]
+    });
 
-    const updatedTask = await db.get(`
-      SELECT 
-        t.*,
-        c.name as category_name,
-        c.color as category_color,
-        c.icon as category_icon
-      FROM tasks t
-      LEFT JOIN categories c ON c.id = t.category_id
-      WHERE t.id = ?
-    `, [id]);
+    const updatedTaskResult = await db.execute({
+      sql: `
+        SELECT 
+          t.*,
+          c.name as category_name,
+          c.color as category_color,
+          c.icon as category_icon
+        FROM tasks t
+        LEFT JOIN categories c ON c.id = t.category_id
+        WHERE t.id = ?
+      `,
+      args: [id]
+    });
 
-    const tags = await db.all(`
-      SELECT tg.id, tg.name, tg.color
-      FROM task_tags tt
-      JOIN tags tg ON tg.id = tt.tag_id
-      WHERE tt.task_id = ?
-    `, [id]);
+    const tagsResult = await db.execute({
+      sql: `
+        SELECT tg.id, tg.name, tg.color
+        FROM task_tags tt
+        JOIN tags tg ON tg.id = tt.tag_id
+        WHERE tt.task_id = ?
+      `,
+      args: [id]
+    });
 
     res.json({
       task: {
-        ...updatedTask,
-        tags
+        ...updatedTaskResult.rows[0],
+        tags: [...tagsResult.rows]
       }
     });
   } catch (error) {
@@ -304,8 +346,12 @@ router.delete('/:id', async (req, res) => {
     const { id } = req.params;
     const db = await getDb();
 
-    const result = await db.run('DELETE FROM tasks WHERE id = ? AND user_id = ?', [id, req.user.id]);
-    if (result.changes === 0) {
+    const result = await db.execute({
+      sql: 'DELETE FROM tasks WHERE id = ? AND user_id = ?',
+      args: [id, req.user.id]
+    });
+
+    if (result.rowsAffected === 0) {
       return res.status(404).json({ error: 'Tarefa não encontrada' });
     }
 

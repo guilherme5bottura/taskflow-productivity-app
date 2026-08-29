@@ -21,23 +21,27 @@ router.post('/register', async (req, res) => {
     const db = await getDb();
 
     // Check if user already exists
-    const existingUser = await db.get('SELECT id FROM users WHERE email = ?', [email.toLowerCase().trim()]);
-    if (existingUser) {
+    const existing = await db.execute({
+      sql: 'SELECT id FROM users WHERE email = ?',
+      args: [email.toLowerCase().trim()]
+    });
+
+    if (existing.rows.length > 0) {
       return res.status(400).json({ error: 'Este e-mail já está cadastrado' });
     }
 
     const salt = await bcrypt.genSalt(10);
     const passwordHash = await bcrypt.hash(password, salt);
 
-    const result = await db.run(
-      'INSERT INTO users (name, email, password_hash) VALUES (?, ?, ?)',
-      [name.trim(), email.toLowerCase().trim(), passwordHash]
-    );
+    const result = await db.execute({
+      sql: 'INSERT INTO users (name, email, password_hash) VALUES (?, ?, ?)',
+      args: [name.trim(), email.toLowerCase().trim(), passwordHash]
+    });
 
-    const userId = result.lastID;
+    const userId = Number(result.lastInsertRowid);
 
     // Seed default categories & tags for the new user
-    await seedDefaultUserCategories(db, userId);
+    await seedDefaultUserCategories(userId);
 
     const token = generateToken({ id: userId, email: email.toLowerCase().trim(), name: name.trim() });
 
@@ -62,7 +66,12 @@ router.post('/login', async (req, res) => {
     }
 
     const db = await getDb();
-    const user = await db.get('SELECT * FROM users WHERE email = ?', [email.toLowerCase().trim()]);
+    const result = await db.execute({
+      sql: 'SELECT * FROM users WHERE email = ?',
+      args: [email.toLowerCase().trim()]
+    });
+
+    const user = result.rows[0];
 
     if (!user) {
       return res.status(400).json({ error: 'E-mail ou senha incorretos' });
@@ -96,13 +105,17 @@ router.post('/forgot-password', async (req, res) => {
     }
 
     const db = await getDb();
-    const user = await db.get('SELECT id, name, email FROM users WHERE email = ?', [email.toLowerCase().trim()]);
+    const result = await db.execute({
+      sql: 'SELECT id, name, email FROM users WHERE email = ?',
+      args: [email.toLowerCase().trim()]
+    });
+
+    const user = result.rows[0];
 
     if (!user) {
       return res.status(404).json({ error: 'Nenhuma conta encontrada com este e-mail' });
     }
 
-    // Em ambiente de desenvolvimento / demonstração, confirmamos o e-mail válido para redefinição imediata
     res.json({
       message: 'Instruções de recuperação geradas com sucesso',
       email: user.email,
@@ -128,7 +141,12 @@ router.post('/reset-password', async (req, res) => {
     }
 
     const db = await getDb();
-    const user = await db.get('SELECT id FROM users WHERE email = ?', [email.toLowerCase().trim()]);
+    const result = await db.execute({
+      sql: 'SELECT id FROM users WHERE email = ?',
+      args: [email.toLowerCase().trim()]
+    });
+
+    const user = result.rows[0];
 
     if (!user) {
       return res.status(404).json({ error: 'Usuário não encontrado' });
@@ -137,7 +155,10 @@ router.post('/reset-password', async (req, res) => {
     const salt = await bcrypt.genSalt(10);
     const passwordHash = await bcrypt.hash(newPassword, salt);
 
-    await db.run('UPDATE users SET password_hash = ? WHERE id = ?', [passwordHash, user.id]);
+    await db.execute({
+      sql: 'UPDATE users SET password_hash = ? WHERE id = ?',
+      args: [passwordHash, user.id]
+    });
 
     res.json({ message: 'Senha redefinida com sucesso! Você já pode fazer login.' });
   } catch (error) {
@@ -150,7 +171,12 @@ router.post('/reset-password', async (req, res) => {
 router.get('/me', authenticateToken, async (req, res) => {
   try {
     const db = await getDb();
-    const user = await db.get('SELECT id, name, email, created_at FROM users WHERE id = ?', [req.user.id]);
+    const result = await db.execute({
+      sql: 'SELECT id, name, email, created_at FROM users WHERE id = ?',
+      args: [req.user.id]
+    });
+
+    const user = result.rows[0];
 
     if (!user) {
       return res.status(404).json({ error: 'Usuário não encontrado' });

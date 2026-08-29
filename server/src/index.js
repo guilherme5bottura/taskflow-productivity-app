@@ -25,13 +25,13 @@ app.use((req, res, next) => {
   next();
 });
 
-// Middleware para garantir que o banco esteja pronto (importante para ambientes serverless)
+// Middleware para garantir que o banco e tabelas estejam prontos (serverless cold start)
 app.use(async (req, res, next) => {
   try {
     await getDb();
     next();
   } catch (err) {
-    console.error('Falha ao conectar no SQLite:', err);
+    console.error('Falha ao inicializar banco:', err);
     res.status(500).json({ error: 'Erro ao conectar no banco de dados' });
   }
 });
@@ -54,8 +54,8 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Ocorreu um erro interno no servidor' });
 });
 
-// Se executado diretamente e não for ambiente Vercel Serverless, inicia o listener HTTP
-if (!process.env.VERCEL) {
+// Se executado diretamente e não for ambiente Vercel Serverless nem teste, inicia o listener HTTP
+if (!process.env.VERCEL && process.env.NODE_ENV !== 'test') {
   app.listen(PORT, () => {
     console.log(`🚀 Servidor backend rodando na porta http://localhost:${PORT}`);
   });
