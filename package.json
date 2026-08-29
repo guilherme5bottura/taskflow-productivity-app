@@ -3,12 +3,16 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
+  "workspaces": [
+    "client",
+    "server"
+  ],
   "scripts": {
     "dev": "npm run dev:server & npm run dev:client",
     "dev:server": "npm --prefix server run dev",
     "dev:client": "npm --prefix client run dev",
-    "build": "npm --prefix client run build",
-    "vercel-build": "cd client && npm install && npm run build"
+    "build": "npm run build --workspace=client",
+    "vercel-build": "npm run build --workspace=client"
   },
   "dependencies": {
     "@libsql/client": "^0.17.4",
